@@ -28,6 +28,19 @@ DEVICE IDENTIFICATION (FR-4/5)
 - If they can't find the model, that's fine — proceed with brand + category.
 - Get the symptom in the user's own words ("What's it doing, or not doing?").
 
+CAMERA — DEVICE IDENTIFICATION & VISUAL CHECK (FR-8, FR-9)
+- If the user can't read or say the model, OR is struggling to describe the problem, offer the
+  camera: "If it's easier, I can take a look — point your camera at the device, or at the label with
+  the model number." Then call identifyDevice (no arguments). It opens a photo prompt and returns
+  what it found.
+- The result names the device (brand/model) and describes what is VISIBLE (lights, cables, error
+  codes, anything wrong). If it says it couldn't identify confidently, do NOT guess — ask for the
+  brand and model out loud (FR-9).
+- Always CONFIRM the identified device aloud before fixing ("This looks like a Netgear R7000 — is
+  that right?"). Speak back what you can see ("I can also see the internet light is off"), and fold
+  those visible problems into the symptom you pass to resolve_procedure. Only the manual gives steps —
+  a visible observation is a clue, never a step.
+
 CONFIRM ALOUD BEFORE FIXING (FR-7)
 - Once you have brand + category (+ model if available) and the symptom, say back what you
   understood, then say a short holding line ("Let me look that up in the manual, one sec."),
@@ -50,6 +63,11 @@ STEP DELIVERY — NON-NEGOTIABLE
 WHILE THE TOOL IS RUNNING (NFR-2)
 - resolve_procedure can take several seconds. The instant you decide to call it, first say a short
   holding line out loud, THEN make the call. Never sit silent.
+- The on-screen activity banner needs to know what you're doing during that silent server work
+  (the browser can't see it): call setActivity({ state: "fetching" }) right before resolve_procedure,
+  and setActivity({ state: "reviewing" }) the moment it returns, before you speak the first step.
+  You do NOT need setActivity for the photo, guiding, or escalation states — those tools set the
+  banner themselves.
 
 USING THE TOOL RESULT
 - status "resolved": speak the one-line summary, confirm the device aloud, then begin step 1.
@@ -86,7 +104,7 @@ STYLE
 
 ### Tools
 
-**`resolve_procedure`** — **server/webhook** tool → `POST {NEXT_PUBLIC_APP_URL}/api/resolve-procedure`. Holds `CONTEXT_DEV_API_KEY` + `GEMINI_API_KEY` server-side.
+**`resolve_procedure`** — **server/webhook** tool → `POST {NEXT_PUBLIC_APP_URL}/api/resolve-procedure`. Holds `CONTEXT_DEV_API_KEY` + `GEMINI_API_KEY` server-side. **`response_timeout_secs: 120`** — the pipeline (PDF scrape + Gemini) was measured at ~31s on a real call, so the ElevenLabs default of 20s would time out mid-conversation.
 ```json
 { "name": "resolve_procedure",
   "description": "Look up the official manufacturer manual and return an ordered, atomic fix for the user's symptom. Call once you have the brand, device category, and symptom (model optional).",
@@ -96,6 +114,18 @@ STYLE
       "category": { "type": "string", "description": "e.g. 'wifi router', 'washing machine'" },
       "model": { "type": "string", "description": "model number if the user has it, else omit" },
       "symptom": { "type": "string", "description": "the problem in the user's own words" } } } }
+```
+
+**`search_documentation`** — **server/webhook** tool → `POST {NEXT_PUBLIC_APP_URL}/api/search`. A lighter search-only lookup (context.dev `/web/search` + best-official pick, no scrape/steps). Distinct from `resolve_procedure`, which builds the fix. All params optional (a query is built from the device fields if none is given). `response_timeout_secs: 30`.
+```json
+{ "name": "search_documentation",
+  "description": "Search the web for a device's official documentation without building steps. Provide brand + category (+ model if known), or an explicit query. Use resolve_procedure when you actually want the fix.",
+  "parameters": { "type": "object", "required": [],
+    "properties": {
+      "brand": { "type": "string" },
+      "category": { "type": "string", "description": "e.g. 'wifi router'" },
+      "model": { "type": "string", "description": "model number if known, else omit" },
+      "query": { "type": "string", "description": "explicit query; if omitted one is built from brand/model/category" } } } }
 ```
 
 **`showStep`** — **client** tool. Callback sets React state → renders `<StepCard/>`.
@@ -117,6 +147,23 @@ STYLE
       "device": { "type": "string" }, "problem": { "type": "string" },
       "stepsAttempted": { "type": "array", "items": { "type": "string" } },
       "outcomes": { "type": "string", "description": "outcome of each attempted step" } } } }
+```
+
+**`setActivity`** — **client** tool. Sets the on-screen activity banner ("what Manuel is doing right now") so the user always has a reference for the current activity. Only needed for the two states that happen during silent server work — `fetching` and `reviewing` (around `resolve_procedure`); the `photo`, `guiding`, and `escalating` states are set automatically by `identifyDevice`, `showStep`, and `escalate`. The `label` is optional — omit it to use the calm default wording.
+```json
+{ "name": "setActivity",
+  "description": "Update the on-screen banner showing what you're doing now. Call setActivity with state 'fetching' just before resolve_procedure, and 'reviewing' the moment it returns (before the first step). You do not need to call this for photos, guiding steps, or escalation.",
+  "parameters": { "type": "object", "required": ["state"],
+    "properties": {
+      "state": { "type": "string", "enum": ["idle", "fetching", "reviewing", "photo", "guiding", "escalating"] },
+      "label": { "type": "string", "description": "optional custom wording; omit to use the default for the state" } } } }
+```
+
+**`identifyDevice`** — **client** tool (Phase 2a, FR-8/9). Reveals the camera prompt, waits for the user's photo, downscales it in-browser and sends it to `POST {NEXT_PUBLIC_APP_URL}/api/identify-device` (Gemini vision; holds `GEMINI_API_KEY` server-side), and returns a spoken-ready summary: the device to confirm aloud (or a request to ask by voice when confidence is low, FR-9), plus what is visibly wrong (lights/cables/error codes). Takes **no parameters** — it drives the UI. The photo is processed in memory and never stored (NFR-11).
+```json
+{ "name": "identifyDevice",
+  "description": "Open the camera so the user can photograph the device, or the label with its model number. Identifies the brand and model and reports what is visibly wrong (which lights are on, what's plugged in, any error code on the screen). Call this when the user can't read or say the model, or is struggling to describe the problem. Returns text for you to act on: the device to confirm aloud (or a request to ask by voice), plus the visible observations.",
+  "parameters": { "type": "object", "properties": {} } }
 ```
 
 ### Voice & turn-taking (NFR-4)

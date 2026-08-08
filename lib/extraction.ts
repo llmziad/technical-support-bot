@@ -11,9 +11,10 @@
 //  - Step.branches[].goTo is a number|"resolved"|"escalate" union Gemini schemas can't
 //    express cleanly, so it's a STRING in the schema and coerced in TS after parse.
 
-import { GoogleGenAI, Type, type Schema } from "@google/genai";
+import { Type, type Schema } from "@google/genai";
 import { z } from "zod";
 
+import { getGeminiClient } from "./gemini";
 import { EXTRACTOR_MODEL } from "./config";
 import type {
   ProcedureResult,
@@ -22,14 +23,6 @@ import type {
   Step,
   Branch,
 } from "./procedure";
-
-// Lazy singleton — constructed at request time, not module load, so a build with
-// no GEMINI_API_KEY set stays quiet and the key is read fresh when actually needed.
-let _ai: GoogleGenAI | null = null;
-function getAI(): GoogleGenAI {
-  if (!_ai) _ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  return _ai;
-}
 
 // The extractor's "essence" — the 9 HARD RULES from docs/agent-config.md.
 export const EXTRACTION_SYSTEM = `Convert a device's official manual into an ORDERED, ATOMIC troubleshooting procedure for ONE symptom.
@@ -278,7 +271,7 @@ export async function extractProcedure(
   const device = deviceFrom(req);
 
   try {
-    const response = await getAI().models.generateContent({
+    const response = await getGeminiClient().models.generateContent({
       model: EXTRACTOR_MODEL,
       contents: buildUserPrompt(req, source, markdown),
       config: {

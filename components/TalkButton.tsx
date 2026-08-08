@@ -6,11 +6,17 @@
 // session (iOS Safari requires a gesture for mic + audio — never start on mount).
 // See docs/ui-design.md and docs/agent-config.md.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useConversation } from "@elevenlabs/react";
 import MicExplainer from "./MicExplainer";
-import { buildClientTools, type EscalationView } from "@/lib/clientTools";
-import type { StepView } from "@/lib/procedure";
+import CameraPrompt from "./CameraPrompt";
+import {
+  buildClientTools,
+  formatIdentificationForAgent,
+  type EscalationView,
+  type ActivityView,
+} from "@/lib/clientTools";
+import type { StepView, DeviceIdentification } from "@/lib/procedure";
 import { newSessionId, setLogSession, logClient } from "@/lib/clientLog";
 
 type Phase = "idle" | "explainer" | "connecting" | "active" | "error";
@@ -28,6 +34,8 @@ interface TalkButtonProps {
   onEscalate: (view: EscalationView) => void;
   onSessionStart: () => void;
   onSessionEnd: () => void;
+  // Optional activity-banner setter; identifyDevice drives the "photo" state through it.
+  onActivity?: (view: ActivityView) => void;
 }
 
 export default function TalkButton({
@@ -35,13 +43,44 @@ export default function TalkButton({
   onEscalate,
   onSessionStart,
   onSessionEnd,
+  onActivity,
 }: TalkButtonProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorText, setErrorText] = useState<string>("");
+  const [capturePending, setCapturePending] = useState(false);
+
+  // Bridge for the agent-triggered `identifyDevice` tool: requestPhoto() reveals the
+  // camera prompt and returns a Promise that resolves when the user's photo has been
+  // identified (or null if they skip / the call fails). The resolver is parked here.
+  const pendingPhotoRef = useRef<
+    ((id: DeviceIdentification | null) => void) | null
+  >(null);
+
+  const requestPhoto = useCallback((): Promise<DeviceIdentification | null> => {
+    return new Promise((resolve) => {
+      // Release any prior pending request before starting a new one.
+      pendingPhotoRef.current?.(null);
+      pendingPhotoRef.current = resolve;
+      setCapturePending(true);
+    });
+  }, []);
+
+  const resolvePhoto = useCallback((id: DeviceIdentification | null) => {
+    setCapturePending(false);
+    const resolve = pendingPhotoRef.current;
+    pendingPhotoRef.current = null;
+    resolve?.(id);
+  }, []);
+
+  // Stable activity emitter — no-op until the page wires an onActivity prop.
+  const emitActivity = useCallback(
+    (view: ActivityView) => onActivity?.(view),
+    [onActivity],
+  );
 
   const clientTools = useMemo(
-    () => buildClientTools(onStep, onEscalate),
-    [onStep, onEscalate],
+    () => buildClientTools(onStep, onEscalate, requestPhoto, emitActivity),
+    [onStep, onEscalate, requestPhoto, emitActivity],
   );
 
   const conversation = useConversation({
@@ -49,12 +88,14 @@ export default function TalkButton({
     onConnect: () => setPhase("active"),
     onDisconnect: () => {
       logClient({ type: "session_end" });
+      resolvePhoto(null); // release any in-flight photo request.
       setPhase("idle");
       onSessionEnd();
     },
     onError: (message: string) => {
       console.error("[conversation] error", message);
       logClient({ type: "session_error", message });
+      resolvePhoto(null);
       setErrorText("Something interrupted the call. Tap to try again.");
       setPhase("error");
     },
@@ -116,6 +157,25 @@ export default function TalkButton({
     setPhase("explainer");
   }, [phase, conversation]);
 
+  // USER-triggered capture (the "Show Manuel the device" button). Unlike the agent's
+  // identifyDevice tool — which returns the result as a tool response — a user-initiated
+  // photo has no tool call to answer, so we PUSH the result into the live conversation:
+  // the grounded facts go as a contextual update, then a short user message prompts
+  // Manuel to react (confirm the device aloud, use the observations). Works with no
+  // ElevenLabs dashboard tool configured. See docs/agent-config.md.
+  const handleShowDevice = useCallback(async () => {
+    const id = await requestPhoto();
+    if (!id) return; // user tapped "Not now" or capture failed — nothing to send.
+    try {
+      conversation.sendContextualUpdate(formatIdentificationForAgent(id));
+      conversation.sendUserMessage(
+        "I've taken a photo of my device — can you take a look?",
+      );
+    } catch (err) {
+      console.error("[TalkButton] failed to send photo result to Manuel", err);
+    }
+  }, [requestPhoto, conversation]);
+
   if (phase === "explainer") {
     return <MicExplainer onContinue={start} busy={false} />;
   }
@@ -145,6 +205,18 @@ export default function TalkButton({
         </span>
       </button>
       <p className="status-line">{statusLine}</p>
+
+      {phase === "active" && !capturePending ? (
+        <button
+          className="show-device-button"
+          type="button"
+          onClick={handleShowDevice}
+        >
+          📷 Show Manuel the device
+        </button>
+      ) : null}
+
+      {capturePending ? <CameraPrompt onResolve={resolvePhoto} /> : null}
     </div>
   );
 }

@@ -42,10 +42,33 @@ interface ScrapeResult {
   title?: string;
 }
 
+// A real manual scrapes to thousands of chars; a dead URL comes back tiny or as an
+// error page (e.g. S3 "Access Denied", a 404 body) that context.dev still reports as
+// success:true. Feeding that to Gemini wastes a call and reliably yields a bogus
+// no_documentation from garbage, so we reject it at the boundary instead.
+const MIN_USEFUL_MARKDOWN = 400; // chars, after trim
+const ERROR_SIGNATURES = [
+  "access denied",
+  "accessdenied",
+  "forbidden",
+  "page not found",
+  "not found",
+  "404 not found",
+  "<error>",
+];
+
+/** True when the scrape looks like a real document, not an error/empty/stub page. */
+function looksUseful(markdown: string): boolean {
+  const trimmed = markdown.trim();
+  if (trimmed.length < MIN_USEFUL_MARKDOWN) return false;
+  const head = trimmed.slice(0, 500).toLowerCase();
+  return !ERROR_SIGNATURES.some((sig) => head.includes(sig));
+}
+
 /**
  * GET /web/scrape/markdown?url= — clean, LLM-ready markdown. PDF-at-URL is
- * auto-parsed. Returns { success: false } on failure (unbilled) so the caller
- * degrades to no_documentation.
+ * auto-parsed. Returns { success: false } on failure — including error pages and
+ * too-short/empty bodies — so the caller degrades to no_documentation.
  */
 export async function scrapeMarkdown(url: string): Promise<ScrapeResult> {
   try {
@@ -55,11 +78,11 @@ export async function scrapeMarkdown(url: string): Promise<ScrapeResult> {
     );
     if (!res.ok) return { success: false, markdown: "" };
     const data = (await res.json()) as Partial<ScrapeResult>;
-    return {
-      success: Boolean(data.success) && typeof data.markdown === "string",
-      markdown: typeof data.markdown === "string" ? data.markdown : "",
-      title: data.title,
-    };
+    const markdown = typeof data.markdown === "string" ? data.markdown : "";
+    if (!data.success || !looksUseful(markdown)) {
+      return { success: false, markdown: "" };
+    }
+    return { success: true, markdown, title: data.title };
   } catch (err) {
     console.error("[contextdev.scrapeMarkdown] failed", err);
     return { success: false, markdown: "" };

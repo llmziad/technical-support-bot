@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     const seed = seedLookup(brand, model);
     const via: "seed" | "search" = seed ? "seed" : "search";
     let source: { url: string; title: string; isOfficial: boolean } | null = seed
-      ? { url: seed.url, title: seed.title, isOfficial: true }
+      ? { url: seed.url, title: seed.title, isOfficial: seed.isOfficial }
       : null;
 
     if (!source) {

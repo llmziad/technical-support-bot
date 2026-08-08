@@ -81,3 +81,20 @@ export interface StepView {
   text: string;
   sourceUrl: string;
 }
+
+// Result of vision device identification (FR-8, Phase 2a). Produced by lib/vision.ts
+// from a photo of the device or its rating label, and returned to the agent by the
+// `identifyDevice` client tool. The Gemini responseSchema in lib/vision.ts and the
+// tool contract in docs/agent-config.md MIRROR this type. `confidence` drives the
+// FR-9 gate ("low" -> fall back to spoken identification). `observations` /
+// `possibleIssues` carry a GROUNDED visual read (lights, cables, error codes, visible
+// faults) — strictly what is visible, never inferred.
+export interface DeviceIdentification {
+  brand: string | null;
+  model: string | null;
+  category: string | null; // "wifi router", "printer", ...
+  confidence: "high" | "medium" | "low";
+  spokenName: string; // e.g. "Netgear R7000" — what the agent says back
+  observations: string[]; // visible state: "Internet light is off", "display shows E-04"
+  possibleIssues: string[]; // things that look wrong: "internet cable isn't in the internet port"
+}

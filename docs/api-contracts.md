@@ -103,6 +103,23 @@ get_next_step({ session_id, action })
 ```
 The `Procedure`/`Step` types are identical across v1/v2, so migration only changes the route surface and the agent's tool list.
 
+## Vision identification schema — `lib/procedure.ts` (Phase 2a)
+
+```ts
+export interface DeviceIdentification {
+  brand: string | null;
+  model: string | null;             // null when not legible — never guessed
+  category: string | null;          // "wifi router", "printer", …
+  confidence: "high" | "medium" | "low";   // FR-9 gate: "low" → fall back to voice
+  spokenName: string;               // how the agent says it back ("Netgear R7000")
+  observations: string[];           // GROUNDED visible state: lights, cables, error codes
+  possibleIssues: string[];         // the subset that looks wrong ("internet port empty")
+}
+```
+Produced by `lib/vision.ts` (Gemini multimodal, `responseSchema` mirrors this type) and returned to
+the agent by the `identifyDevice` client tool. `observations`/`possibleIssues` are strictly what is
+visible in the photo — never inferred (same "never invent" rule as the extractor).
+
 ## Routes
 
 ### `GET /api/signed-url`
@@ -141,6 +158,29 @@ escalate: ({ device, problem, stepsAttempted, outcomes }) => {
 }
 ```
 On mobile, `tel:` opens the native dialer. `EscalationCard` also shows a large "Call [admin]" button as a fallback if the auto-dial is blocked.
+
+### `POST /api/identify-device`  ← browser (via the `identifyDevice` client tool)
+Vision device identification + visual check (Phase 2a, FR-8). The browser downscales the photo and
+sends it here; the route runs Gemini vision (`lib/vision.ts`) and returns the identity + observations.
+- **Request:** `{ imageBase64: string; mimeType: string; sessionId?: string }` (raw base64, no `data:` prefix).
+- **Response:** `DeviceIdentification` (always 200; any failure degrades to a low-confidence empty result).
+- **Privacy (NFR-11):** the image is processed in memory and never persisted; the log records only the
+  RESULT (brand/model/confidence + observation counts), never the image bytes.
+
+### `identifyDevice`  ← agent **client tool**
+Reveals `<CameraPrompt/>`; the user's tap on "📷 Take a photo" is the gesture that opens the camera
+(iOS Safari requires a gesture — same rule as `startSession`). On capture it POSTs to
+`/api/identify-device`, then returns a spoken-ready **string** to the agent.
+- **Params (from the agent):** none — `{}`.
+- **Returns to the agent:** identity + "confirm aloud" directive (or, when confidence is low / no
+  brand / the user skips, a "ask by voice" fallback, FR-9), followed by the visible observations and
+  possible issues so the agent can narrate them and fold faults into the symptom.
+```ts
+identifyDevice: async () => {
+  const id = await requestPhoto();            // shows CameraPrompt, awaits photo → DeviceIdentification | null
+  return formatIdentificationForAgent(id);    // lib/clientTools.ts
+}
+```
 
 ## Gemini `responseSchema` (mirrors `Procedure`/`Step`)
 
