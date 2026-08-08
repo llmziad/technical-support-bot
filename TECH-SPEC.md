@@ -45,6 +45,46 @@ flowchart TB
 
 **Reading it:** the browser mints a signed URL server-side (① — the ElevenLabs key never reaches the client), opens a realtime audio channel to the agent (②), and the agent drives everything by calling tools. **Server tools** (`resolve_procedure`) run on Vercel because they hold secrets; **client tools** (`showStep`, `escalate`, `identifyDevice`) run in the browser because they touch the DOM.
 
+### Request lifecycle (user → user)
+
+How one problem travels from a spoken symptom to a spoken step and back:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User (55+)
+    participant P as Page (browser)
+    participant EL as ElevenLabs agent
+    participant RP as /api/resolve-procedure
+    participant CD as context.dev
+    participant GM as Gemini
+
+    U->>P: taps "Talk to Manuel"
+    P->>P: GET /api/signed-url (mic gesture here)
+    P->>EL: startSession(signedUrl)
+    EL-->>U: "Hi, what's wrong?" (spoken)
+    U-->>EL: "the internet box has a red light"
+    EL->>EL: pull brand / category / model from speech
+    EL-->>U: "Sounds like your Netgear router — right?" (confirm aloud)
+    U-->>EL: "yes"
+    Note over EL,U: holding utterance — "let me pull up the manual…"
+    EL->>RP: resolve_procedure{brand, category, model, symptom}
+    RP->>CD: search (ranked best-first) + scrape markdown (PDF-aware)
+    CD-->>RP: clean manual markdown
+    RP->>GM: extract → ordered atomic steps (responseSchema)
+    GM-->>RP: ProcedureResult
+    RP-->>EL: {status: resolved, steps[], source}
+    loop one step per turn
+        EL-->>U: reads step N (spoken)
+        EL->>P: showStep({n, total, text, sourceUrl})
+        P-->>U: StepCard on screen (visible grounding)
+        U-->>EL: "done" / "repeat" / "go back"
+    end
+    EL-->>U: "That should do it — all working now?"
+```
+
+If retrieval finds no grounded manual, `/api/resolve-procedure` returns **safe generic steps** (or `safety_refusal` / `no_documentation`) instead — the one-step-per-turn loop is identical.
+
 **The step engine (`/api/resolve-procedure`) is the product:**
 1. **Discover** — committed **seed map** first, else **context.dev** `/web/search`, results **ranked best-first** by manual-likeness (direct PDFs and full-manual hosts over marketing landing pages).
 2. **Retrieve** — **context.dev** `/web/scrape/markdown` → clean markdown, **PDF-at-URL auto-parsed**; error/stub pages rejected at the boundary.
