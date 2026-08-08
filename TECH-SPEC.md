@@ -10,16 +10,40 @@ Manuel is a voice-first web app: a non-technical person fixes a device by *talki
 
 One Next.js page + a few server routes on Vercel (HTTPS — the mic is blocked on non-secure origins). **ElevenLabs owns the entire voice loop** (STT, TTS, turn-taking, barge-in) as *agent configuration*, not app code. Our code is the page that renders the current step and the tools the agent calls (secrets can't live in the browser).
 
+```mermaid
+flowchart TB
+    subgraph Browser["Browser — Next.js page (HTTPS)"]
+        UI["page.tsx · TalkButton · StepCard"]
+        SDK["@elevenlabs/react — useConversation"]
+        CT["client tools:<br/>showStep · escalate · identifyDevice"]
+        UI --- SDK --- CT
+    end
+
+    subgraph Vercel["Vercel — server routes (secrets live here)"]
+        SU["GET /api/signed-url"]
+        RP["POST /api/resolve-procedure<br/><b>the step engine</b>"]
+        IDR["POST /api/identify-device<br/>vision"]
+    end
+
+    subgraph External["External services"]
+        EL["ElevenLabs Agents<br/>voice loop + agent brain"]
+        CD["context.dev<br/>search + scrape · PDF-aware"]
+        GM["Gemini<br/>structured extraction + vision"]
+    end
+
+    SDK -->|"① tap → signed URL"| SU
+    SU -->|"signed_url"| SDK
+    SDK <-->|"② realtime audio"| EL
+    EL -->|"③ server tool"| RP
+    EL -.->|"client tools run in-browser"| CT
+    CT -->|"showStep()"| UI
+    CT -->|"identifyDevice() → photo"| IDR
+    RP --> CD
+    RP --> GM
+    IDR --> GM
 ```
-Browser (page + @elevenlabs/react)
-  │  tap → GET /api/signed-url   (mic gesture; ELEVENLABS_API_KEY server-side)
-  │  realtime audio  ⇄  ElevenLabs agent
-  ▼
-ElevenLabs agent ──server tool──▶ POST /api/resolve-procedure  (the step engine)
-  │                                    ├─▶ context.dev  (/web/search + /web/scrape/markdown, PDF-aware)
-  │                                    └─▶ Gemini  (responseSchema → ordered atomic steps)
-  └─ client tools (browser) ─▶ showStep (render step) · escalate (tel: dialer) · identifyDevice (photo → vision)
-```
+
+**Reading it:** the browser mints a signed URL server-side (① — the ElevenLabs key never reaches the client), opens a realtime audio channel to the agent (②), and the agent drives everything by calling tools. **Server tools** (`resolve_procedure`) run on Vercel because they hold secrets; **client tools** (`showStep`, `escalate`, `identifyDevice`) run in the browser because they touch the DOM.
 
 **The step engine (`/api/resolve-procedure`) is the product:**
 1. **Discover** — committed **seed map** first, else **context.dev** `/web/search`, results **ranked best-first** by manual-likeness (direct PDFs and full-manual hosts over marketing landing pages).
