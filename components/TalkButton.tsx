@@ -50,6 +50,7 @@ export default function TalkButton({
   const [errorText, setErrorText] = useState<string>("");
   const [capturePending, setCapturePending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [muted, setMuted] = useState(false); // controlled mic mute (ElevenLabs micMuted)
   // Hidden file input for the USER-triggered upload button (one tap → picker).
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -89,6 +90,7 @@ export default function TalkButton({
 
   const conversation = useConversation({
     clientTools,
+    micMuted: muted, // controlled: when true, ElevenLabs stops sending the user's audio
     onConnect: () => setPhase("active"),
     onDisconnect: () => {
       logClient({ type: "session_end" });
@@ -239,6 +241,29 @@ export default function TalkButton({
 
       {phase === "active" && !capturePending ? (
         <>
+          <button
+            className={`mute-button${muted ? " is-muted" : ""}`}
+            type="button"
+            onClick={() => setMuted((m) => !m)}
+            aria-label={muted ? "Unmute microphone" : "Mute microphone"}
+            aria-pressed={muted}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+              <path d="M5 11a7 7 0 0 0 14 0" />
+              <line x1="12" y1="18" x2="12" y2="22" />
+              {muted ? <line x1="4" y1="3.5" x2="20" y2="20.5" /> : null}
+            </svg>
+          </button>
+
           <input
             ref={photoInputRef}
             type="file"

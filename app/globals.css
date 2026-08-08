@@ -330,6 +330,37 @@ body {
   background: var(--success);
 }
 
+/* --- Mute toggle (in-call) ---------------------------------------------- */
+
+.mute-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease;
+}
+.mute-button svg {
+  width: 20px;
+  height: 20px;
+}
+.mute-button:hover {
+  color: var(--text);
+}
+.mute-button.is-muted {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--hairline));
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
 /* --- Vision: camera trigger + capture card (Phase 2a) ------------------- */
 
 /* Sleek neutral chip that appears under the ring during a call. Subtle by default
