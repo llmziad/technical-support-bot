@@ -2,7 +2,7 @@
 
 > **Manuel** is a voice-first web app that helps a non-technical person fix a device by *talking* to it — "a manual that talks back." This spec covers the problem, the system architecture, why each tool was chosen, how it's buildable in a six-hour hackathon window, and what v2 looks like.
 >
-> Companion docs: [`architecture.md`](architecture.md) · [`api-contracts.md`](api-contracts.md) · [`agent-config.md`](agent-config.md) · [`phases/`](phases/)
+> Companion docs: [`architecture.md`](docs/architecture.md) · [`api-contracts.md`](docs/api-contracts.md) · [`agent-config.md`](docs/agent-config.md) · [`phases/`](docs/phases/)
 
 ---
 
@@ -173,7 +173,7 @@ flowchart TD
 
 Three properties make this the product and not a chatbot:
 
-- **The procedure is a structured object** — a `steps[]` array with source anchors and branch conditions ([`lib/procedure.ts`](../lib/procedure.ts) is the single source of truth). "Go back" and "repeat" become array indexing, not a memory problem.
+- **The procedure is a structured object** — a `steps[]` array with source anchors and branch conditions ([`lib/procedure.ts`](lib/procedure.ts) is the single source of truth). "Go back" and "repeat" become array indexing, not a memory problem.
 - **Retrieval is a tool call, not pre-stuffed context** — keeps the conversation responsive, lets the agent re-retrieve mid-session if the problem turns out different, and keeps token cost proportional to need.
 - **Failure is structural, not vibes** — `no_documentation` and `safety_refusal` are first-class outcomes in the schema. The extractor is *instructed to refuse to invent*. The route **always returns HTTP 200 with a typed body** — every failure degrades to `no_documentation` so the agent always has something safe to say (NFR-9).
 
@@ -300,15 +300,15 @@ Conflating these is a known trap. Manuel introduces them across phases:
 
 | Concern | File(s) |
 |---|---|
-| Shared types (source of truth) | [`lib/procedure.ts`](../lib/procedure.ts) |
-| Step engine route | [`app/api/resolve-procedure/route.ts`](../app/api/resolve-procedure/route.ts) |
-| Gemini extraction (grounding) | [`lib/extraction.ts`](../lib/extraction.ts) · [`lib/gemini.ts`](../lib/gemini.ts) |
-| context.dev client | [`lib/contextdev.ts`](../lib/contextdev.ts) |
-| Vision (2a) | [`lib/vision.ts`](../lib/vision.ts) · [`app/api/identify-device/route.ts`](../app/api/identify-device/route.ts) |
-| Seed map | [`lib/seed-map.ts`](../lib/seed-map.ts) |
-| Client tools | [`lib/clientTools.ts`](../lib/clientTools.ts) |
-| The page | [`app/page.tsx`](../app/page.tsx) |
-| Agent config (prompts/tools) | [`docs/agent-config.md`](agent-config.md) |
-| Full contracts + schema | [`docs/api-contracts.md`](api-contracts.md) |
+| Shared types (source of truth) | [`lib/procedure.ts`](lib/procedure.ts) |
+| Step engine route | [`app/api/resolve-procedure/route.ts`](app/api/resolve-procedure/route.ts) |
+| Gemini extraction (grounding) | [`lib/extraction.ts`](lib/extraction.ts) · [`lib/gemini.ts`](lib/gemini.ts) |
+| context.dev client | [`lib/contextdev.ts`](lib/contextdev.ts) |
+| Vision (2a) | [`lib/vision.ts`](lib/vision.ts) · [`app/api/identify-device/route.ts`](app/api/identify-device/route.ts) |
+| Seed map | [`lib/seed-map.ts`](lib/seed-map.ts) |
+| Client tools | [`lib/clientTools.ts`](lib/clientTools.ts) |
+| The page | [`app/page.tsx`](app/page.tsx) |
+| Agent config (prompts/tools) | [`docs/agent-config.md`](docs/agent-config.md) |
+| Full contracts + schema | [`docs/api-contracts.md`](docs/api-contracts.md) |
 
 *Live version: https://manuel-seven.vercel.app/*
