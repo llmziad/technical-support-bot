@@ -356,6 +356,78 @@ body {
   background: var(--success);
 }
 
+/* --- Vision: camera trigger + capture card (Phase 2a) ------------------- */
+
+/* Sleek neutral chip that appears under the ring during a call. Subtle by default
+   (secondary to the talk ring), tints to accent on hover/press. No emoji. */
+.show-device-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 10px 18px;
+  min-height: 44px;
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 120ms ease;
+}
+.show-device-button svg {
+  width: 18px;
+  height: 18px;
+}
+.show-device-button:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--hairline));
+}
+.show-device-button:active {
+  transform: translateY(1px);
+}
+
+/* Icon + label layout inside a primary button (the capture card's "Take a photo"). */
+.btn-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+.btn-content svg {
+  width: 19px;
+  height: 19px;
+}
+
+.camera-prompt {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--hairline));
+  align-items: stretch;
+  gap: 18px;
+}
+
+.text-button {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 8px;
+  min-height: 44px;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+.text-button:hover {
+  color: var(--text);
+}
+
 /* --- EscalationCard ----------------------------------------------------- */
 
 .escalation {
