@@ -29,11 +29,12 @@ export const SEED_MAP: Record<
     title: "HP DeskJet 2700 All-in-One series User Guide",
     isOfficial: false,
   },
-  // Smart TV — Samsung support model pages are JS-rendered/flaky; manualslib is stable.
+  // Smart TV — full manuals paginate/404; this official Samsung article carries the
+  // actual on-screen menu reset procedure.
   "samsung|tu7000": {
-    url: "https://www.manualslib.com/manual/1802019/Samsung-Tu7000.html",
-    title: "Samsung TU7000 Series Smart TV User Manual",
-    isOfficial: false,
+    url: "https://www.samsung.com/latin_en/support/tv-audio-video/reset-my-samsung-tv/",
+    title: "Samsung TV — How to reset (Samsung Support)",
+    isOfficial: true,
   },
   // Appliance with an error-code display (dishwasher E-codes) — official Bosch PDF.
   "bosch|she3ar75uc": {
