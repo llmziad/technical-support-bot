@@ -412,3 +412,85 @@ function escalateNoDoc(device: DeviceIdentity): ProcedureResult {
       "I'm having trouble reading that manual right now. Let me get a family member on the phone to help.",
   };
 }
+
+// ---- Generic fallback (no manual found) ---------------------------------
+// When retrieval finds no usable manual, build SAFE, clearly-generic first-line
+// troubleshooting from general knowledge. This relaxes the "grounded in the manual"
+// guarantee ON PURPOSE (see docs/CLAUDE.md guardrail #4, R-1), so it is deliberately
+// conservative: safe/reversible actions only, no invasive/mains/gas work, generic
+// labelling + spoken disclosure (FR-6), and safety_refusal preserved.
+
+// Synthetic "source" for generic steps — no manual URL. StepCard shows a plain
+// "General guidance" note instead of a manual link when the url is empty.
+const GENERIC_SOURCE = {
+  url: "",
+  title: "General guidance (no manual found)",
+  isOfficial: false,
+};
+
+export const GENERIC_SYSTEM = `Build a SHORT, SAFE, first-line troubleshooting procedure for a device from GENERAL knowledge of its category and symptom, because no manual was found. You are the grounding layer of a voice assistant that reads steps aloud, one at a time, to a non-technical person (55+). This is GENERIC guidance, NOT from the device's manual.
+
+HARD RULES:
+1. Use ONLY safe, reversible, NON-INVASIVE, common first-line actions: turn it off and on (unplug ~30 seconds), check and re-seat external cables, check the indicator lights, check obvious external switches or settings, wait, and — only if clearly relevant — a factory/settings reset (set destructive=true with a spoken warning). Use the FEWEST steps.
+2. NEVER instruct opening or disassembling the device, touching mains/line-voltage wiring, gas, internal parts, or anything needing tools or a professional. If such a step is unavoidable, set safety="refuse" with a one-line hazard and NO how-to. If the SYMPTOM itself can only be fixed that way, return status "safety_refusal".
+3. Do NOT invent device-specific details (exact button names, menu paths, model-specific behaviour) you cannot be sure of. Keep steps general ("press and hold the reset button for about 10 seconds, if the device has one"). Every step labeling="generic"; device.identity="generic".
+4. Phrase for the EAR: short, plain, second person, no jargon, no figure/page/URL references.
+5. Put anything the user should observe in successCheck; end with a check that the symptom is actually resolved. Branches are optional.
+6. sourceAnchor on every step: sectionTitle="General guidance", quote="", anchorUrl="".
+
+OUTCOMES:
+- Safe generic steps exist -> status "resolved".
+- The symptom inherently requires unsafe work -> status "safety_refusal" with the hazard and a spoken refusal that redirects to a professional.
+- You genuinely cannot suggest anything safe and useful -> status "no_documentation".`;
+
+/** Per-request prompt for the generic fallback (no manual markdown). */
+export function buildGenericUserPrompt(req: ResolveProcedureRequest): string {
+  return [
+    `DEVICE: brand=${req.brand ?? ""}; category=${req.category ?? ""}; model=${req.model ?? "(unknown)"}`,
+    `SYMPTOM (user's own words): ${req.symptom ?? ""}`,
+    "",
+    "No manual was found for this device. Produce SAFE, GENERIC first-line troubleshooting for this",
+    "TYPE of device and this symptom, from general knowledge. Return a single JSON object matching the",
+    "provided schema. Set device.model to null if unknown, and leave every sourceAnchor as instructed.",
+  ].join("\n");
+}
+
+/**
+ * Generic fallback: a safe, clearly-labelled procedure built from general knowledge
+ * when no manual is available. Always resolves to a valid ProcedureResult; a resolved
+ * result is force-tagged generic so the agent discloses it (FR-6).
+ */
+export async function extractGenericProcedure(
+  req: ResolveProcedureRequest,
+): Promise<ProcedureResult> {
+  const device = deviceFrom(req);
+
+  try {
+    const response = await getGeminiClient().models.generateContent({
+      model: EXTRACTOR_MODEL,
+      contents: buildGenericUserPrompt(req),
+      config: {
+        systemInstruction: GENERIC_SYSTEM,
+        responseMimeType: "application/json",
+        responseSchema: SCHEMA,
+      },
+    });
+
+    const raw = response.text;
+    if (!raw || !raw.trim()) return escalateNoDoc(device);
+
+    const parsed = ProcedureResultSchema.parse(JSON.parse(raw));
+    const result = toProcedureResult(parsed, req, GENERIC_SOURCE);
+
+    // Force generic labelling regardless of the model's output — this path is never
+    // device-specific, and the agent's disclosure keys off it (FR-6).
+    if (result.status === "resolved") {
+      result.procedure.device.identity = "generic";
+      for (const step of result.procedure.steps) step.labeling = "generic";
+    }
+    return result;
+  } catch (err) {
+    console.error("[extraction.extractGenericProcedure] failed", err);
+    return escalateNoDoc(device);
+  }
+}

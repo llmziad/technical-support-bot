@@ -7,8 +7,9 @@
 import { NextResponse } from "next/server";
 
 import { seedLookup } from "@/lib/seed-map";
-import { search, scrapeMarkdown, bestOfficial } from "@/lib/contextdev";
-import { extractProcedure } from "@/lib/extraction";
+import { search, scrapeMarkdown, rankCandidates, isOfficialHost } from "@/lib/contextdev";
+import { extractProcedure, extractGenericProcedure } from "@/lib/extraction";
+import { ALLOW_GENERIC_FALLBACK, MAX_MANUAL_CANDIDATES } from "@/lib/config";
 import { logEvent } from "@/lib/logger";
 import type {
   ProcedureResult,
@@ -48,81 +49,112 @@ export async function POST(req: Request) {
       symptom,
     });
 
-    // 1. Discover the URL: committed seed map first, then live search.
+    // 1. Build an ordered list of candidate manual URLs: seed map first, else the
+    //    RANKED search results (best-first by manual-likeness). We no longer pick one
+    //    URL and hope — we try the top few.
     const seed = seedLookup(brand, model);
-    const via: "seed" | "search" = seed ? "seed" : "search";
-    let source: { url: string; title: string; isOfficial: boolean } | null = seed
-      ? { url: seed.url, title: seed.title, isOfficial: seed.isOfficial }
-      : null;
+    let via: "seed" | "search" | "generic" = seed ? "seed" : "search";
+    type Candidate = { url: string; title: string; isOfficial: boolean };
+    let candidates: Candidate[] = [];
 
-    if (!source) {
+    if (seed) {
+      candidates = [{ url: seed.url, title: seed.title, isOfficial: seed.isOfficial }];
+    } else {
       const results = await search(
-        `${brand} ${model ?? ""} ${category} manual pdf`.replace(/\s+/g, " ").trim(),
+        `${brand} ${model ?? ""} ${category} manual`.replace(/\s+/g, " ").trim(),
       );
-      const best = bestOfficial(results);
-      if (!best) {
+      candidates = rankCandidates(results, { model })
+        .slice(0, MAX_MANUAL_CANDIDATES)
+        .map((r) => ({
+          url: r.url,
+          title: r.title ?? "Manufacturer documentation",
+          isOfficial: isOfficialHost(r.url),
+        }));
+    }
+
+    // 2. Try each candidate in order: scrape -> extract -> return the FIRST grounded
+    //    fix. A safety_refusal short-circuits (the symptom is unsafe regardless of
+    //    source); a per-candidate no_documentation just moves on to the next URL.
+    for (let rank = 0; rank < candidates.length; rank++) {
+      const cand = candidates[rank];
+      const downloadStart = Date.now();
+      const scrape = await scrapeMarkdown(cand.url);
+      if (!scrape.success || !scrape.markdown) {
         await logEvent({
           source: "server",
           type: "manual_download_failed",
-          reason: "no_url_found",
+          reason: "scrape_empty",
           sessionId,
+          url: cand.url,
+          via,
+          rank,
           device: { brand, category, model: model ?? null },
         });
-        return NextResponse.json(noDoc(device, model ? "escalate" : "ask_for_model"));
+        continue;
       }
-      source = {
-        url: best.url,
-        title: best.title ?? "Manufacturer documentation",
-        isOfficial: true,
-      };
-    }
+      const source = scrape.title ? { ...cand, title: scrape.title } : cand;
 
-    // 2. Retrieve clean markdown (PDF auto-parsed). Failure -> no_documentation.
-    const downloadStart = Date.now();
-    const scrape = await scrapeMarkdown(source.url);
-    if (!scrape.success || !scrape.markdown) {
       await logEvent({
         source: "server",
-        type: "manual_download_failed",
-        reason: "scrape_empty",
+        type: "manual_downloaded",
         sessionId,
         url: source.url,
+        title: source.title,
         via,
+        rank,
+        contentLength: scrape.markdown.length,
+        downloadMs: Date.now() - downloadStart,
         device: { brand, category, model: model ?? null },
       });
-      return NextResponse.json(noDoc(device, model ? "escalate" : "ask_for_model"));
+
+      const result = await extractProcedure(body, source, scrape.markdown);
+      if (result.status === "resolved" || result.status === "safety_refusal") {
+        await logEvent({
+          source: "server",
+          type: "tool_call",
+          tool: "resolve_procedure",
+          sessionId,
+          status: result.status,
+          via,
+          rank,
+          stepCount: result.status === "resolved" ? result.procedure.steps.length : 0,
+          durationMs: Date.now() - startedAt,
+          device: { brand, category, model: model ?? null },
+        });
+        return NextResponse.json(result);
+      }
+      // no_documentation from this candidate -> try the next one.
     }
-    if (scrape.title) source = { ...source, title: scrape.title };
 
-    // LOG: the manual for this device was downloaded (via seed map or live search).
+    // 3. No manual yielded a grounded fix. Fall back to SAFE generic guidance
+    //    (clearly labelled + disclosed) unless disabled; else no_documentation.
+    if (ALLOW_GENERIC_FALLBACK) {
+      via = "generic";
+      const generic = await extractGenericProcedure(body);
+      await logEvent({
+        source: "server",
+        type: "tool_call",
+        tool: "resolve_procedure",
+        sessionId,
+        status: generic.status,
+        via,
+        stepCount:
+          generic.status === "resolved" ? generic.procedure.steps.length : 0,
+        durationMs: Date.now() - startedAt,
+        device: { brand, category, model: model ?? null },
+      });
+      return NextResponse.json(generic);
+    }
+
     await logEvent({
       source: "server",
-      type: "manual_downloaded",
+      type: "manual_download_failed",
+      reason: candidates.length ? "no_grounded_fix" : "no_url_found",
       sessionId,
-      url: source.url,
-      title: source.title,
       via,
-      contentLength: scrape.markdown.length,
-      downloadMs: Date.now() - downloadStart,
       device: { brand, category, model: model ?? null },
     });
-
-    // 3. Construct + validate the procedure with the extraction stage.
-    const result = await extractProcedure(body, source, scrape.markdown);
-
-    // LOG: the resolve_procedure tool call completed.
-    await logEvent({
-      source: "server",
-      type: "tool_call",
-      tool: "resolve_procedure",
-      sessionId,
-      status: result.status,
-      via,
-      stepCount: result.status === "resolved" ? result.procedure.steps.length : 0,
-      durationMs: Date.now() - startedAt,
-      device: { brand, category, model: model ?? null },
-    });
-    return NextResponse.json(result);
+    return NextResponse.json(noDoc(device, model ? "escalate" : "ask_for_model"));
   } catch (err) {
     console.error("[resolve-procedure] unexpected failure", err);
     await logEvent({

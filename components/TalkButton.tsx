@@ -17,6 +17,7 @@ import {
   type ActivityView,
 } from "@/lib/clientTools";
 import type { StepView, DeviceIdentification } from "@/lib/procedure";
+import { identifyImageFile } from "@/lib/visionClient";
 import { newSessionId, setLogSession, logClient } from "@/lib/clientLog";
 
 type Phase = "idle" | "explainer" | "connecting" | "active" | "error";
@@ -48,6 +49,9 @@ export default function TalkButton({
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorText, setErrorText] = useState<string>("");
   const [capturePending, setCapturePending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  // Hidden file input for the USER-triggered upload button (one tap → picker).
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   // Bridge for the agent-triggered `identifyDevice` tool: requestPhoto() reveals the
   // camera prompt and returns a Promise that resolves when the user's photo has been
@@ -148,33 +152,60 @@ export default function TalkButton({
     }
   }, [ringState, errorText]);
 
-  const handlePrimaryTap = useCallback(() => {
+  const handlePrimaryTap = useCallback(async () => {
     if (phase === "active") {
       void conversation.endSession();
       return;
     }
-    // idle or error -> show the mic explainer first (FR-3).
-    setPhase("explainer");
-  }, [phase, conversation]);
-
-  // USER-triggered capture (the "Show Manuel the device" button). Unlike the agent's
-  // identifyDevice tool — which returns the result as a tool response — a user-initiated
-  // photo has no tool call to answer, so we PUSH the result into the live conversation:
-  // the grounded facts go as a contextual update, then a short user message prompts
-  // Manuel to react (confirm the device aloud, use the observations). Works with no
-  // ElevenLabs dashboard tool configured. See docs/agent-config.md.
-  const handleShowDevice = useCallback(async () => {
-    const id = await requestPhoto();
-    if (!id) return; // user tapped "Not now" or capture failed — nothing to send.
+    // If the browser already granted mic permission, skip the explainer and start
+    // directly — this tap is still the user gesture, and no OS prompt will fire. The
+    // explainer only exists to precede that prompt (FR-3). Best-effort: the Permissions
+    // API (or the "microphone" name) is unsupported on some browsers (Firefox/older
+    // Safari) — there we fall back to showing the explainer.
     try {
-      conversation.sendContextualUpdate(formatIdentificationForAgent(id));
-      conversation.sendUserMessage(
-        "I've taken a photo of my device — can you take a look?",
-      );
-    } catch (err) {
-      console.error("[TalkButton] failed to send photo result to Manuel", err);
+      const perm = await navigator.permissions?.query({
+        name: "microphone" as PermissionName,
+      });
+      if (perm?.state === "granted") {
+        void start();
+        return;
+      }
+    } catch {
+      // Permissions API/name unsupported — fall through to the explainer.
     }
-  }, [requestPhoto, conversation]);
+    setPhase("explainer");
+  }, [phase, conversation, start]);
+
+  // USER-triggered upload button. The tap opens the photo picker IMMEDIATELY (the tap
+  // is the user gesture) — no intermediate "are you sure?" card. When a photo is chosen
+  // we identify it and PUSH the result into the live conversation: the grounded facts as
+  // a contextual update, then a short user message so Manuel reacts (confirm the device
+  // aloud, use the observations). Works with no ElevenLabs dashboard tool configured.
+  const openPhotoPicker = useCallback(() => {
+    photoInputRef.current?.click();
+  }, []);
+
+  const handleUserPhotoFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = ""; // allow re-picking the same file
+      if (!file) return; // picker dismissed — nothing to do.
+      setUploading(true);
+      try {
+        const id = await identifyImageFile(file);
+        if (!id) return;
+        conversation.sendContextualUpdate(formatIdentificationForAgent(id));
+        conversation.sendUserMessage(
+          "I've taken a photo of my device — can you take a look?",
+        );
+      } catch (err) {
+        console.error("[TalkButton] failed to send photo result to Manuel", err);
+      } finally {
+        setUploading(false);
+      }
+    },
+    [conversation],
+  );
 
   if (phase === "explainer") {
     return <MicExplainer onContinue={start} busy={false} />;
@@ -207,25 +238,36 @@ export default function TalkButton({
       <p className="status-line">{statusLine}</p>
 
       {phase === "active" && !capturePending ? (
-        <button
-          className="show-device-button"
-          type="button"
-          onClick={handleShowDevice}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+        <>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleUserPhotoFile}
+            hidden
+          />
+          <button
+            className="show-device-button"
+            type="button"
+            onClick={openPhotoPicker}
+            disabled={uploading}
           >
-            <path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2l1.3-1.9a1 1 0 0 1 .82-.43h6.76a1 1 0 0 1 .82.43L17.5 7h2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
-            <circle cx="12" cy="12.75" r="3.25" />
-          </svg>
-          <span>Show Manuel the device</span>
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2l1.3-1.9a1 1 0 0 1 .82-.43h6.76a1 1 0 0 1 .82.43L17.5 7h2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
+              <circle cx="12" cy="12.75" r="3.25" />
+            </svg>
+            <span>{uploading ? "Reading your photo…" : "Show Manuel the device"}</span>
+          </button>
+        </>
       ) : null}
 
       {capturePending ? <CameraPrompt onResolve={resolvePhoto} /> : null}

@@ -35,7 +35,10 @@ export default function StepCard({ step, marker, markerText }: StepCardProps) {
         >
           From the official manual ›
         </a>
-      ) : null}
+      ) : (
+        // No manual URL -> this is generic guidance (FR-6). Stay honest on-screen.
+        <p className="source-generic">General guidance — not from your device&apos;s manual</p>
+      )}
     </section>
   );
 }

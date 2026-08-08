@@ -10,6 +10,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { DeviceIdentification } from "@/lib/procedure";
+import { identifyImageFile } from "@/lib/visionClient";
 
 interface CameraPromptProps {
   // Called exactly once with the vision result, or null if the user skips / it fails.
@@ -32,20 +33,10 @@ export default function CameraPrompt({ onResolve }: CameraPromptProps) {
       if (!file) return; // dialog dismissed — stay on the prompt.
 
       setWorking(true);
-      try {
-        const { base64, mimeType } = await fileToDownscaledBase64(file);
-        const res = await fetch("/api/identify-device", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ imageBase64: base64, mimeType }),
-        });
-        if (!res.ok) throw new Error(`identify-device ${res.status}`);
-        const id = (await res.json()) as DeviceIdentification;
-        onResolve(id);
-      } catch (err) {
-        console.error("[CameraPrompt] identify failed", err);
-        onResolve(null); // let the agent fall back to voice (FR-9).
-      }
+      // identifyImageFile handles downscale + upload and returns null on failure,
+      // which lets the agent fall back to voice (FR-9).
+      const id = await identifyImageFile(file);
+      onResolve(id);
     },
     [onResolve],
   );
@@ -68,7 +59,7 @@ export default function CameraPrompt({ onResolve }: CameraPromptProps) {
       />
 
       <button
-        className="primary-button"
+        className="shutter-button"
         type="button"
         onClick={openCamera}
         disabled={working}
@@ -105,46 +96,4 @@ export default function CameraPrompt({ onResolve }: CameraPromptProps) {
       ) : null}
     </section>
   );
-}
-
-/**
- * Read a File, downscale its longest side to <= maxDim, and return raw base64 JPEG
- * (no data: prefix) + mime type. Keeps payload/latency down and the image in memory
- * only. Falls back to the original bytes if canvas is unavailable.
- */
-async function fileToDownscaledBase64(
-  file: File,
-  maxDim = 1024,
-): Promise<{ base64: string; mimeType: string }> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
-    reader.readAsDataURL(file);
-  });
-
-  const strip = (u: string) => u.split(",")[1] ?? "";
-
-  try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const i = new Image();
-      i.onload = () => resolve(i);
-      i.onerror = () => reject(new Error("image decode failed"));
-      i.src = dataUrl;
-    });
-    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-    const w = Math.max(1, Math.round(img.width * scale));
-    const h = Math.max(1, Math.round(img.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return { base64: strip(dataUrl), mimeType: file.type || "image/jpeg" };
-    ctx.drawImage(img, 0, 0, w, h);
-    const out = canvas.toDataURL("image/jpeg", 0.85);
-    return { base64: strip(out), mimeType: "image/jpeg" };
-  } catch {
-    // Couldn't decode/redraw — send the original bytes.
-    return { base64: strip(dataUrl), mimeType: file.type || "image/jpeg" };
-  }
 }

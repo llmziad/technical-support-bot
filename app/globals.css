@@ -257,6 +257,14 @@ body {
   align-items: center;
 }
 
+/* Honest on-screen note when steps are generic (no manual found). */
+.source-generic {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* --- MicExplainer ------------------------------------------------------- */
 
 .explainer-text {
@@ -276,40 +284,6 @@ body {
   padding: 18px 28px;
   min-height: 60px;
   cursor: pointer;
-}
-
-/* --- CameraPrompt (Phase 2a vision) ------------------------------------- */
-
-.show-device-button {
-  font-family: inherit;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--accent);
-  background: none;
-  border: 1.5px solid color-mix(in srgb, var(--accent) 45%, var(--hairline));
-  border-radius: 14px;
-  padding: 14px 20px;
-  min-height: 52px;
-  cursor: pointer;
-}
-
-.camera-prompt {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--hairline));
-  align-items: stretch;
-}
-
-.text-button {
-  font-family: inherit;
-  font-size: 17px;
-  font-weight: 500;
-  color: var(--muted);
-  background: none;
-  border: none;
-  padding: 10px;
-  min-height: 44px;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 /* --- ActivityBanner ("what Manuel is doing right now") ------------------ */
@@ -386,15 +360,43 @@ body {
   height: 18px;
 }
 .show-device-button:hover {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 32%, var(--hairline));
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border-color: color-mix(in srgb, var(--text) 22%, var(--hairline));
 }
 .show-device-button:active {
   transform: translateY(1px);
 }
 
-/* Icon + label layout inside a primary button (the capture card's "Take a photo"). */
+/* The capture card's main action. Sleek high-contrast monochrome (not accent blue),
+   still a large obvious tap target for the 55+ persona. */
+.shutter-button {
+  font-family: inherit;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--surface);
+  background: var(--text);
+  border: none;
+  border-radius: 14px;
+  padding: 16px 24px;
+  min-height: 58px;
+  cursor: pointer;
+  transition:
+    opacity 150ms ease,
+    transform 120ms ease;
+}
+.shutter-button:hover {
+  opacity: 0.9;
+}
+.shutter-button:active {
+  transform: translateY(1px);
+}
+.shutter-button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* Icon + label layout inside the shutter button ("Take a photo"). */
 .btn-content {
   display: inline-flex;
   align-items: center;
@@ -407,7 +409,7 @@ body {
 }
 
 .camera-prompt {
-  border-color: color-mix(in srgb, var(--accent) 32%, var(--hairline));
+  border-color: var(--hairline);
   align-items: stretch;
   gap: 18px;
 }
