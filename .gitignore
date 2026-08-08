@@ -32,3 +32,6 @@ next-env.d.ts.timestamp
 
 # on-device event logs
 /logs
+
+# IDE
+.idea/
