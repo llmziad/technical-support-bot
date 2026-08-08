@@ -24,7 +24,7 @@ A neutral base with **one calm primary accent**, plus **semantic colors that app
 | `--hairline` | `#E6E7EA` | `#23262B` | Dividers, card borders |
 | `--accent` (primary) | `#2F6BFF` | `#5B87FF` | Listening state, links, focus ring |
 | `--speaking` (amber) | `#E08600` | `#F0A22E` | Agent speaking / "looking in the manual" |
-| `--danger` (red) | `#D22D2D` | `#F0554F` | Safety refusal, destructive-step warning, live-mic dot |
+| `--danger` (red) | `#D22D2D` | `#F0554F` | Safety refusal, destructive-step warning, live-mic dot, muted-mic toggle |
 | `--success` (green) | `#1E9E5A` | `#3FBE7A` | Resolved / fix confirmed |
 
 Rules:
@@ -70,9 +70,11 @@ One **large circular button**, centered — the only thing on the idle screen be
 
 ## Components
 
-- **`TalkButton`** — the control above; owns the `useConversation` session and the state ring.
-- **`StepCard`** — appears when `showStep` fires. Big **counter** (`1 / 5`), large **step text**, and a tap-friendly **source link** ("From the official Netgear manual ›"). When the step is destructive or a safety caution, a `--danger`/`--speaking` inline marker. This card is the visible proof of grounding (FR-3b, FR-23).
-- **`MicExplainer`** — a plain-language panel shown **before** the OS mic prompt (FR-3): "Manuel needs your microphone so you can talk to it. Nothing is recorded after you're done." One button to continue.
+- **`TalkButton`** — the control above; owns the `useConversation` session and the state ring. During an active call it also shows two small controls:
+  - a round **mute** toggle (mic glyph) that flips the controlled `micMuted` prop on `useConversation` so Manuel stops hearing the user. Neutral by default, **`--danger` (red) when muted**, with a struck-through mic glyph. Pure client UI — not an agent tool.
+  - a **"Show Manuel the device"** button (camera glyph) — the user-initiated photo path. **One tap opens the photo picker** (the tap is the required gesture; no confirmation card), the image is identified, and the result is pushed into the live conversation. Shows "Reading your photo…" while it works.
+- **`StepCard`** — appears when `showStep` fires. Big **counter** (`1 / 5`), large **step text**, and a tap-friendly **source link** ("From the official Netgear manual ›"). When the step is **generic** (no manual — empty `sourceUrl`), the link is replaced by a muted line **"General guidance — not from your device's manual"** so the screen stays honest (FR-6). When the step is destructive or a safety caution, a `--danger`/`--speaking` inline marker. This card is the visible proof of grounding (FR-3b, FR-23).
+- **`MicExplainer`** — a plain-language panel shown **before** the OS mic prompt (FR-3): "Manuel needs your microphone so you can talk to it. Nothing is recorded after you're done." One button to continue. **Skipped** when the browser already reports microphone permission `granted` (the session starts straight from the tap); it remains the fallback when permission is prompt/denied or the Permissions API is unsupported.
 - **`EscalationCard` / calling state** — when `escalate` fires: "I'm getting [admin] on the phone for you now," with a calling indicator. The phone call is the artifact; the card is the on-screen echo.
 - **"Looking in the manual…" state** — the visual companion to the holding utterance, so a slow tool call never looks frozen.
 

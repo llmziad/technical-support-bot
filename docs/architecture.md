@@ -19,9 +19,10 @@ Manuel's Phase 0 system is deliberately small: **one page + a few server routes.
                                                    └───────┬───────────────────────┬────────────┘
                                                            ▼                       ▼
                                     POST /api/resolve-procedure         escalate (client tool)
-                                    seed-map ▸ context.dev search ▸      EscalationCard +
-                                    context.dev scrape(md, PDF) ▸        tel:+971508888888
-                                    Gemini → Procedure JSON             (demo gag — no server)
+                                    seed-map ▸ ranked search ▸           EscalationCard +
+                                    iterate top-3: scrape(md,PDF)+       tel:+971508888888
+                                    Gemini ▸ first grounded, else       (demo gag — no server)
+                                    safe generic → Procedure JSON
 ```
 
 ## The two deliverables (and why the surface is this small)
@@ -41,7 +42,7 @@ This is why the estimating trap (treating conversational behaviour as app featur
 | Voice interface | STT, TTS, turn-taking, barge-in, audio transport | ElevenLabs Agents (mandated, C-1) |
 | Orchestration | Session state, step engine, tool routing, escalation | The agent + server routes |
 | Device identification | Brand/category/model from speech | The agent (LLM), confirmed aloud |
-| Document discovery | Device identity → candidate URL | Seed map, then `context.dev /web/search` |
+| Document discovery | Device identity → ranked candidate URLs | Seed map, then `context.dev /web/search` ranked best-first (`rankCandidates`) |
 | Document retrieval | URL → clean structured text (PDF-aware) | `context.dev /web/scrape/markdown` |
 | Procedure construction | Manual markdown → ordered atomic steps | Gemini (`@google/genai`) structured output |
 | On-screen grounding | Show the current step + source, in sync | `showStep` client tool → React state |
@@ -49,10 +50,10 @@ This is why the estimating trap (treating conversational behaviour as app featur
 
 ## The retrieval pipeline (`/api/resolve-procedure`)
 
-1. **Discover the URL.** Check the committed **seed map** first (`lib/seed-map.ts`) — reliable for demo devices. Miss → `context.dev` `POST /web/search` for the manufacturer manual. Still nothing → return `no_documentation` (the agent says so; never invents).
-2. **Retrieve.** `context.dev` `GET /web/scrape/markdown?url=…` returns clean markdown. **PDF-at-URL is parsed automatically** (`pdf.shouldParse` defaults true) — this closes the "manual is a PDF" open question. Failed context.dev calls are not billed.
-3. **Construct.** Gemini with `config.responseMimeType: "application/json"` + `config.responseSchema` (JSON schema) turns messy markdown into an **ordered, atomic** step list — one physical action per step, each carrying its source anchor, with destructive/safety tagging and branch conditions. It is instructed to **refuse to invent** steps not in the doc.
-4. **Return** the structured `ProcedureResult` (see [`api-contracts.md`](api-contracts.md)).
+1. **Build a ranked candidate list.** Check the committed **seed map** first (`lib/seed-map.ts`) — reliable for demo devices, used as a single candidate. Miss → `context.dev` `POST /web/search`, then `rankCandidates(results, {model})` orders **all** results best-first by manual-likeness (`lib/contextdev.ts`): direct PDFs and known full-manual hosts score highest; bare landing/marketing pages and forums score down. Aggregators like **manua.ls / manualslib are kept, not excluded** — they host the real full manuals (FR-13 is "prefer official", not "only official"). The top `MAX_MANUAL_CANDIDATES` (=3) become the candidates.
+2. **Iterate the candidates.** For each in rank order: `context.dev` `GET /web/scrape/markdown?url=…` returns clean markdown (**PDF-at-URL is parsed automatically**; a `looksUseful` guard rejects error/stub pages, and failed context.dev calls are not billed), then **Gemini** (`config.responseMimeType: "application/json"` + `config.responseSchema`) turns that markdown into an **ordered, atomic** step list — one physical action per step, each carrying its source anchor, with destructive/safety tagging and branch conditions, instructed to **refuse to invent** steps not in the doc. **Return the FIRST candidate that yields a `resolved` procedure.** A `safety_refusal` from any candidate short-circuits immediately (the symptom is unsafe regardless of source); a per-candidate `no_documentation` just moves on to the next URL.
+3. **Fallback when nothing grounded.** If no candidate yields a fix and `ALLOW_GENERIC_FALLBACK` is true (default), return **safe, clearly-labelled GENERIC guidance** (`extractGenericProcedure`): conservative, reversible actions only (power-cycle, re-seat cables, check lights, factory reset with a destructive warning), never opening the device/mains/gas (those become `safety: "refuse"` or a whole-request `safety_refusal`). Every step is tagged `labeling: "generic"`, `device.identity: "generic"`, with a synthetic empty source so the agent discloses it (FR-6) and the `StepCard` shows a "general guidance" note. With the flag off, this degrades to `no_documentation` instead.
+4. **Return** the structured `ProcedureResult` — always HTTP 200 with a typed body (see [`api-contracts.md`](api-contracts.md)).
 
 **Retrieval is a tool call, not pre-stuffed context** — this keeps the conversation responsive, allows mid-session re-retrieval when the problem turns out different from first described, and keeps token cost proportional to need.
 

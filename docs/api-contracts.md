@@ -128,22 +128,23 @@ Mints a short-lived ElevenLabs signed URL server-side (keeps `ELEVENLABS_API_KEY
 
 ### `POST /api/resolve-procedure`  ← agent server tool `resolve_procedure`
 - **Request:** `{ brand: string; category: string; model?: string; symptom: string }`
-- **Response:** `ProcedureResult` (always 200 with a typed body; failures become `no_documentation`, never a raw 500).
-- **Pipeline:** seed map → `context.dev /web/search` → `context.dev /web/scrape/markdown` (PDF-aware) → Gemini (`@google/genai`) structured output → validate (coerce `goTo`, assert contiguous `stepNumber`).
+- **Response:** `ProcedureResult` (always 200 with a typed body; failures become `no_documentation`, never a raw 500). A `resolved` result may be **generic** — built from general knowledge when no manual yielded a fix (`device.identity: "generic"`, an empty `source.url`, every step `labeling: "generic"`). This is gated by `ALLOW_GENERIC_FALLBACK` (`lib/config.ts`, default true); with it off, the same case returns `no_documentation`.
+- **Pipeline:** seed map → `context.dev /web/search` **ranked best-first** → iterate the top `MAX_MANUAL_CANDIDATES` (=3): `context.dev /web/scrape/markdown` (PDF-aware) → Gemini (`@google/genai`) structured output → return the first grounded fix; else safe generic fallback → validate (coerce `goTo`, assert contiguous `stepNumber`).
 
 ```
-1. url = SEED_MAP[`${brand}|${model}`]?.url
-        ?? bestOfficial(contextdev.search(`${brand} ${model??""} ${category} manual pdf`))
-        ?? return no_documentation
-2. { markdown } = contextdev.scrapeMarkdown(url)      // PDF auto-parsed; !success → no_documentation (unbilled)
-3. result = genai.models.generateContent({
-     model: EXTRACTOR_MODEL,
-     contents: buildUserPrompt(...),
-     config: { systemInstruction: EXTRACTION_SYSTEM,
-               responseMimeType: "application/json",
-               responseSchema: PROCEDURE_SCHEMA } })
-4. parse → coerce goTo → validate → NextResponse.json(result)
+1. candidates = SEED_MAP[`${brand}|${model}`]           // single candidate if present
+        ?? rankCandidates(contextdev.search(`${brand} ${model??""} ${category} manual`),
+                          { model }).slice(0, MAX_MANUAL_CANDIDATES)   // ranked best-first; aggregators kept
+2. for cand in candidates:                              // try each in rank order
+     { markdown } = contextdev.scrapeMarkdown(cand.url) // PDF auto-parsed; !success/looksUseful → skip (unbilled)
+     result = extractProcedure(body, cand, markdown)    // Gemini structured output
+     if result.status in {"resolved","safety_refusal"}: return result   // safety short-circuits
+     // "no_documentation" → try the next candidate
+3. // no candidate grounded a fix:
+   if ALLOW_GENERIC_FALLBACK: return extractGenericProcedure(body)   // safe generic, device.identity="generic"
+   else: return no_documentation
 ```
+Each `extract*` step parses → coerces `goTo` → validates before the route returns `NextResponse.json(result)`.
 
 ### `escalate`  ← agent **client tool** (no server route)
 A demo gag: Manuel "calls the son." The browser callback renders the `EscalationCard` with the summary and opens the phone dialer. No Twilio, no server route, no second agent.
