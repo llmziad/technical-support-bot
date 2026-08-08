@@ -40,7 +40,7 @@ Building on the Phase 0 single page + server API routes:
 - **Document cache (store #1)** — raw manual markdown keyed by device identity, a cache with TTL. Fed by [context.dev](../architecture.md) (URL→clean markdown, `/web/search`, auto-parses PDF-at-URL, satisfying FR-16 and supporting FR-14). This is **not** RAG — do not conflate it with the Phase 2b document index.
 - **Saved devices store** — lightweight per-household record of previously resolved devices, used to disambiguate spoken names.
 - **Escalation service / route** — assembles the FR-28 summary and delivers it to the family administrator; channel TBD (see dependencies).
-- **Cost instrumentation** — per-session metering across ElevenLabs (voice), `claude-sonnet-5` (procedure construction), and context.dev (retrieval).
+- **Cost instrumentation** — per-session metering across ElevenLabs (voice), Gemini (procedure construction), and context.dev (retrieval).
 - **PWA shell** — manifest, service worker, install prompt; keep-awake handling for session resilience.
 - **Localization layer** — Arabic voice selection in the ElevenLabs agent config plus RTL/bilingual UI. Note conversational behaviour stays in **agent config, not app code**.
 
@@ -55,7 +55,7 @@ Building on the Phase 0 single page + server API routes:
 ## External dependencies
 - **ElevenLabs Agents (Conversational AI)** — mandated voice layer (STT/TTS/turn-taking/barge-in/audio transport). *Gotcha:* Arabic voice selection and quality must be validated early; the agent config owns all conversational behaviour.
 - **context.dev** — URL→clean markdown, `/web/search`, auto-parses PDF-at-URL (FR-14, FR-16). *Gotcha:* manufacturer support sites vary wildly; crawling to the actual troubleshooting page is a Should, not guaranteed.
-- **Claude `claude-sonnet-5`** — structured-output procedure construction. *Gotcha:* cost per session must stay inside the NFR-12 budget.
+- **Gemini (`@google/genai`)** — structured-output procedure construction. *Gotcha:* cost per session must stay inside the NFR-12 budget.
 - **Escalation channel provider** — push/WhatsApp/SMS/email (undecided). *Gotcha:* WhatsApp Business and SMS both carry onboarding/approval overhead; scope the chosen one early.
 - **HTTPS everywhere from hour one** — required for mic permission on mobile browsers (see R-13).
 

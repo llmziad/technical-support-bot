@@ -25,7 +25,7 @@ Under the mandated constraints (ElevenLabs owns all voice/turn-taking/barge-in; 
 - Session auth: `GET /api/signed-url` mints an ElevenLabs signed URL server-side.
 - The agent calls a **server tool** `resolve_procedure` (the step engine).
 - The agent calls **client tools** `showStep(...)` (renders the on-screen step + source link **in sync with the voice**) and `escalate(...)` (the phone-dialer gag).
-- `POST /api/resolve-procedure`: seed-map → context.dev search → context.dev scrape (PDF-aware) → `claude-sonnet-5` structured output → an ordered, atomic step list.
+- `POST /api/resolve-procedure`: seed-map → context.dev search → context.dev scrape (PDF-aware) → Gemini (`@google/genai`) structured output → an ordered, atomic step list.
 - `escalate` **client tool**: shows the on-screen `EscalationCard` and opens the phone dialer via a `tel:+971508888888` link — a demo gag ("Manuel calls the son"). No server route, no Twilio.
 - The step engine + retrieval sit behind a **clean tool interface** so the voice layer is the only single-vendor dependency.
 
@@ -54,7 +54,7 @@ All are **server-side**. Nothing sensitive is ever `NEXT_PUBLIC_`.
 | `ELEVENLABS_API_KEY` | `/api/signed-url` |
 | `ELEVENLABS_AGENT_ID` | the "Manuel" conversation agent |
 | `CONTEXT_DEV_API_KEY` | `/api/resolve-procedure` |
-| `ANTHROPIC_API_KEY` | `/api/resolve-procedure` (`claude-sonnet-5`) |
+| `GEMINI_API_KEY` | `/api/resolve-procedure` (Gemini extraction) |
 | `NEXT_PUBLIC_APP_URL` | webhook tool base URL (non-secret) |
 | `NEXT_PUBLIC_ADMIN_TEL` | escalation `tel:` number (non-secret; defaults to `+971508888888`) |
 
@@ -64,7 +64,7 @@ All are **server-side**. Nothing sensitive is ever `NEXT_PUBLIC_`.
 
 - **ElevenLabs Agents** — voice layer (mandated). Mic needs **HTTPS + a user-gesture tap** (iOS Safari).
 - **context.dev** — URL→clean markdown; also `/web/search`; auto-parses PDF-at-URL. Secret is **server-side only**.
-- **Anthropic `claude-sonnet-5`** — structured output via `output_config.format`. **Rejects `temperature`/`top_p` and assistant prefill.** No Citations API with structured output.
+- **Gemini (`@google/genai`)** — structured output via `config.responseMimeType: "application/json"` + `config.responseSchema`. Reads `GEMINI_API_KEY` server-side. No temperature/prefill restrictions.
 - **Escalation** — no external service; a client-side `tel:+971508888888` link (demo gag).
 
 ## Guardrails / non-negotiables
@@ -73,7 +73,7 @@ All are **server-side**. Nothing sensitive is ever `NEXT_PUBLIC_`.
 2. **`startSession` only from a tap handler** (never on mount / in `useEffect`) — iOS Safari requires a user gesture for mic + audio.
 3. **One step per turn.** Manuel never reads more than one step at a time. This is the product.
 4. **Never invent steps.** If the manual doesn't cover it, say so (`no_documentation`). Every step carries its source.
-5. **`lib/procedure.ts` is the single source of truth** for shared types. The Claude JSON schema and the ElevenLabs tool schemas *mirror* it — change the type, change both.
+5. **`lib/procedure.ts` is the single source of truth** for shared types. The Gemini `responseSchema` and the ElevenLabs tool schemas *mirror* it — change the type, change both.
 
 ## Where things live
 

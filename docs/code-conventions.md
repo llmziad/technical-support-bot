@@ -13,12 +13,12 @@ These are binding for all code in this repo. They exist to keep a hackathon-spee
 - **App Router.** Server Components by default. Add `"use client"` **only** where interactivity is required — in practice the `TalkButton` subtree that uses `useConversation`. Keep the client bundle small.
 - **API routes** are async handlers returning `NextResponse.json(...)`. They validate input, do the work, and return typed results — see errors below.
 - **Strict TypeScript.** No `any` in shared types. `unknown` + a narrow is fine at boundaries (e.g. parsing a model's JSON output), immediately validated into a known type.
-- **Async/await** everywhere; no floating promises. Wrap external calls (`context.dev`, Anthropic, ElevenLabs) in `try/catch` and degrade gracefully.
+- **Async/await** everywhere; no floating promises. Wrap external calls (`context.dev`, Gemini, ElevenLabs) in `try/catch` and degrade gracefully.
 
 ## Shared types are the contract
 
 - **`lib/procedure.ts` is the single source of truth** for the procedure/step types.
-- The **Claude JSON schema** (`lib/extraction.ts`) and the **ElevenLabs tool parameter schemas** (`docs/agent-config.md`) **mirror** these types. If you change a type, change both mirrors in the same commit. A drift between them is a bug even if it compiles.
+- The **Gemini `responseSchema`** (`lib/extraction.ts`) and the **ElevenLabs tool parameter schemas** (`docs/agent-config.md`) **mirror** these types. If you change a type, change both mirrors in the same commit. A drift between them is a bug even if it compiles.
 - Validate model output **in TypeScript after parse** (contiguous `stepNumber`, coerced `goTo`) — never trust the shape blindly.
 
 ## Secrets & configuration
@@ -36,7 +36,7 @@ These are binding for all code in this repo. They exist to keep a hackathon-spee
 ## AI-application specifics
 
 - **Prompts live in committed files** (`lib/extraction.ts` for the extractor; `docs/agent-config.md` for the agent) — never inlined ad hoc or hand-tweaked in the dashboard without updating the committed reference.
-- **Structured output only** for the extractor: `output_config.format` with a JSON schema. Remember `claude-sonnet-5` rejects `temperature`/`top_p` and assistant prefill.
+- **Structured output only** for the extractor: `config.responseMimeType: "application/json"` + `config.responseSchema`. `response.text` is the raw JSON string — always `JSON.parse` and guard it.
 - Keep the **tool interface vendor-agnostic**: the routes take/return plain JSON and know nothing about ElevenLabs (see the R-16 boundary in [`architecture.md`](architecture.md)).
 
 ## Naming & structure

@@ -1,5 +1,5 @@
 // lib/extraction.ts — the Gemini extraction stage (the grounding layer).
-// gemini-2.5-flash turns messy manual markdown into an ORDERED, ATOMIC step list.
+// gemini-3.6-flash turns messy manual markdown into an ORDERED, ATOMIC step list.
 // The responseSchema below MIRRORS ProcedureResult/Procedure/Step in lib/procedure.ts —
 // change one, change both (see docs/api-contracts.md, docs/code-conventions.md).
 //

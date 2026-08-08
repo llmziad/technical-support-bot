@@ -11,7 +11,7 @@ Escalation is a **demo gag**, not a second agent: the `escalate` client tool ope
 
 ## 1. Manuel (conversation agent)
 
-**Model:** any capable conversation LLM offered by ElevenLabs (this is separate from the `claude-sonnet-5` used inside `/api/resolve-procedure`). **Language:** English (Phase 0).
+**Model:** any capable conversation LLM offered by ElevenLabs (this is separate from the Gemini extractor used inside `/api/resolve-procedure`). **Language:** English (Phase 0).
 
 ### System prompt
 
@@ -86,7 +86,7 @@ STYLE
 
 ### Tools
 
-**`resolve_procedure`** — **server/webhook** tool → `POST {NEXT_PUBLIC_APP_URL}/api/resolve-procedure`. Holds `CONTEXT_DEV_API_KEY` + `ANTHROPIC_API_KEY` server-side.
+**`resolve_procedure`** — **server/webhook** tool → `POST {NEXT_PUBLIC_APP_URL}/api/resolve-procedure`. Holds `CONTEXT_DEV_API_KEY` + `GEMINI_API_KEY` server-side.
 ```json
 { "name": "resolve_procedure",
   "description": "Look up the official manufacturer manual and return an ordered, atomic fix for the user's symptom. Call once you have the brand, device category, and symptom (model optional).",
@@ -143,7 +143,7 @@ See [`api-contracts.md`](api-contracts.md#escalate--agent-client-tool-no-server-
 
 ## The extractor (not an ElevenLabs agent, but a prompt — kept here for reference)
 
-Inside `/api/resolve-procedure`, `claude-sonnet-5` converts manual markdown into the step list. Full prompt + JSON schema live in `lib/extraction.ts`. Essence:
+Inside `/api/resolve-procedure`, Gemini converts manual markdown into the step list. Full prompt + JSON schema live in `lib/extraction.ts`. Essence:
 
 ```
 Convert a device's official manual into an ORDERED, ATOMIC troubleshooting procedure for ONE symptom.
@@ -159,4 +159,4 @@ You are the grounding layer of a voice assistant that reads steps aloud one at a
 8. BRANCHES: encode manual conditionals as {condition, goTo: stepNumber|"resolved"|"escalate"}.
 9. Minimum steps; end with a successCheck that confirms resolution.
 ```
-SDK note (`claude-sonnet-5`): structured output via `output_config.format`; **omit `temperature`/`top_p` and assistant prefill**; no Citations API. *Load the `claude-api` skill at build time to confirm params.*
+SDK note (`@google/genai`): structured output via `config.responseMimeType: "application/json"` + `config.responseSchema` (OpenAPI-subset via the `Type` enum); `systemInstruction` passed in `config`; `response.text` is the raw JSON string (`JSON.parse` + guard). No `temperature`/`top_p`/prefill restrictions. Reads `GEMINI_API_KEY` server-side.

@@ -34,7 +34,7 @@ The registry does **not** introduce a new data store type — it produces the **
 
 ## External dependencies
 - **Persistent household/registry storage** — extends the Phase 1 saved-devices store; no new third-party vendor required.
-- Reuses the existing stack: ElevenLabs (voice), context.dev (retrieval into the document cache), `claude-sonnet-5` (procedure construction). No new external service is mandated by this phase.
+- Reuses the existing stack: ElevenLabs (voice), context.dev (retrieval into the document cache), Gemini (procedure construction). No new external service is mandated by this phase.
 
 ## Risks & mitigations
 

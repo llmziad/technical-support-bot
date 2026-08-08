@@ -9,7 +9,7 @@ Phase 0 proves the core thesis on stage: **grounded, paced, patient guidance.** 
 - **Voice session** — one tap starts a session; ElevenLabs owns STT/TTS/turn-taking/barge-in.
 - **Spoken device identification** — brand/category/model extracted from speech, confirmed aloud.
 - **Grounded retrieval** — seed map for demo devices, live `context.dev` search+scrape (PDF-aware) for the rest.
-- **The step engine** — manual markdown → ordered, atomic steps via `claude-sonnet-5`; one step per turn.
+- **The step engine** — manual markdown → ordered, atomic steps via Gemini; one step per turn.
 - **On-screen grounding** — current step + source manual link, in sync with the voice (FR-3b).
 - **Safety** — refuse mains/gas/sealed-enclosure work; gate destructive steps; never ask for secrets.
 - **No-documentation path** — when nothing is found, say so honestly and offer escalation; never invent.
@@ -55,7 +55,7 @@ Phase 0 proves the core thesis on stage: **grounded, paced, patient guidance.** 
 The whole system is introduced here (greenfield). See [`architecture.md`](../architecture.md).
 - **The page** — Next.js, `@elevenlabs/react` `useConversation`; the `TalkButton`, `StepCard`, `MicExplainer`, `EscalationCard` components ([`ui-design.md`](../ui-design.md)).
 - **`GET /api/signed-url`** — mints the ElevenLabs signed URL server-side.
-- **`POST /api/resolve-procedure`** — the step engine: seed map → context.dev search → context.dev scrape (PDF-aware) → `claude-sonnet-5` structured output → `ProcedureResult`.
+- **`POST /api/resolve-procedure`** — the step engine: seed map → context.dev search → context.dev scrape (PDF-aware) → Gemini (`@google/genai`) structured output → `ProcedureResult`.
 - **`showStep` + `escalate` client tools** — `showStep` renders the on-screen step + source in sync with the voice; `escalate` shows the summary card and opens the `tel:` dialer (gag).
 - **Seed map** (`lib/seed-map.ts`) — 5 committed demo devices so retrieval never misses on stage.
 - **One ElevenLabs agent** (Manuel) — config in [`agent-config.md`](../agent-config.md).
@@ -72,7 +72,7 @@ The whole system is introduced here (greenfield). See [`architecture.md`](../arc
 ## External dependencies
 - **ElevenLabs Agents** — mandated voice layer. *Gotchas:* mic needs HTTPS + a tap gesture (iOS Safari); verify web SDK behaviour on mobile Safari early; confirm tool calls don't cut off speech.
 - **context.dev** — URL→clean markdown, `/web/search`, PDF-at-URL auto-parse. *Gotcha:* JS-heavy vendor portals vary; validate the seed URLs resolve.
-- **Anthropic `claude-sonnet-5`** — structured-output step construction. *Gotcha:* rejects `temperature`/`top_p` and prefill; no Citations API with structured output → anchors produced into the schema.
+- **Gemini (`@google/genai`)** — structured-output step construction via `config.responseMimeType: "application/json"` + `config.responseSchema`. *Gotcha:* `response.text` is the raw JSON string → `JSON.parse` and guard it; anchors produced into the schema. Reads `GEMINI_API_KEY` server-side.
 - **Escalation** — none. A client-side `tel:+971508888888` link (demo gag); no Twilio, no external account.
 - **Vercel + HTTPS from hour one** — mic is blocked on non-secure origins; deploy before building features.
 

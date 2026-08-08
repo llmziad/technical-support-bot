@@ -1,6 +1,6 @@
 # API Contracts
 
-The shared types and the request/response shape of every route. **`lib/procedure.ts` is the single source of truth** — the Claude JSON schema and the ElevenLabs tool schemas mirror it (see [`code-conventions.md`](code-conventions.md)).
+The shared types and the request/response shape of every route. **`lib/procedure.ts` is the single source of truth** — the Gemini `responseSchema` and the ElevenLabs tool schemas mirror it (see [`code-conventions.md`](code-conventions.md)).
 
 ## Procedure schema — `lib/procedure.ts`
 
@@ -112,18 +112,19 @@ Mints a short-lived ElevenLabs signed URL server-side (keeps `ELEVENLABS_API_KEY
 ### `POST /api/resolve-procedure`  ← agent server tool `resolve_procedure`
 - **Request:** `{ brand: string; category: string; model?: string; symptom: string }`
 - **Response:** `ProcedureResult` (always 200 with a typed body; failures become `no_documentation`, never a raw 500).
-- **Pipeline:** seed map → `context.dev /web/search` → `context.dev /web/scrape/markdown` (PDF-aware) → `claude-sonnet-5` structured output → validate (coerce `goTo`, assert contiguous `stepNumber`).
+- **Pipeline:** seed map → `context.dev /web/search` → `context.dev /web/scrape/markdown` (PDF-aware) → Gemini (`@google/genai`) structured output → validate (coerce `goTo`, assert contiguous `stepNumber`).
 
 ```
 1. url = SEED_MAP[`${brand}|${model}`]?.url
         ?? bestOfficial(contextdev.search(`${brand} ${model??""} ${category} manual pdf`))
         ?? return no_documentation
 2. { markdown } = contextdev.scrapeMarkdown(url)      // PDF auto-parsed; !success → no_documentation (unbilled)
-3. result = anthropic.messages.create({
-     model: "claude-sonnet-5", max_tokens: 16000,
-     system: EXTRACTION_SYSTEM,
-     messages: [{ role: "user", content: buildUserPrompt(...) }],
-     output_config: { format: { type: "json_schema", schema: PROCEDURE_SCHEMA } } })
+3. result = genai.models.generateContent({
+     model: EXTRACTOR_MODEL,
+     contents: buildUserPrompt(...),
+     config: { systemInstruction: EXTRACTION_SYSTEM,
+               responseMimeType: "application/json",
+               responseSchema: PROCEDURE_SCHEMA } })
 4. parse → coerce goTo → validate → NextResponse.json(result)
 ```
 
@@ -141,9 +142,9 @@ escalate: ({ device, problem, stepsAttempted, outcomes }) => {
 ```
 On mobile, `tel:` opens the native dialer. `EscalationCard` also shows a large "Call [admin]" button as a fallback if the auto-dial is blocked.
 
-## Claude JSON schema (mirrors `Procedure`/`Step`)
+## Gemini `responseSchema` (mirrors `Procedure`/`Step`)
 
-Passed as `output_config.format.schema`. Every object has `additionalProperties: false` and full `required`. `goTo` is left schema-open and coerced in TS after parse (`"resolved" | "escalate" | integer`), since a leaf union is awkward under strict structured output. `spokenMessage`, `next`, and `hazard` are nullable top-level fields used by the `no_documentation` / `safety_refusal` results. Full schema lives in `lib/extraction.ts` alongside `EXTRACTION_SYSTEM` and `buildUserPrompt()`.
+Passed as `config.responseSchema` (OpenAPI-subset via the `Type` enum). Every object has full `required` and `propertyOrdering`. `goTo` is left as a schema string and coerced in TS after parse (`"resolved" | "escalate" | integer`), since a leaf union is awkward under structured output. `spokenMessage`, `next`, and `hazard` are nullable top-level fields used by the `no_documentation` / `safety_refusal` results. Full schema lives in `lib/extraction.ts` alongside `EXTRACTION_SYSTEM` and `buildUserPrompt()`.
 
 ## Cross-links
 

@@ -18,7 +18,7 @@ Fill exact model numbers into `lib/seed-map.ts` once the devices are in hand.
 
 ## Pre-warm (do this ~30 min before)
 
-1. **Run each seed device once** through `/api/resolve-procedure`. This (a) caches the scrape, (b) compiles the `claude-sonnet-5` JSON schema (cached ~24h), and (c) confirms every seed URL still resolves.
+1. **Run each seed device once** through `/api/resolve-procedure`. This (a) caches the scrape, (b) warms the Gemini extraction path, and (c) confirms every seed URL still resolves.
 2. **Refresh the page** right before presenting so the ElevenLabs signed URL is fetched fresh at tap time (it expires ~15 min).
 3. **Test the escalation call** to your own phone end-to-end (see below) — hours before, never live.
 4. On the demo phone: **pre-grant microphone permission** to the domain; set volume up; use the actual device+browser you'll present on.

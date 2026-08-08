@@ -36,7 +36,7 @@ Phase 2b is where Manuel starts to *compound*. Today every session re-derives th
 Versus Phase 1's single document cache:
 - **Vector store** — holds both the **case base embeddings** (retrieval over operational history) and the **document index** (RAG over vendor docs, FR-42). These are separate collections even when co-located.
 - **Relational case records** — the structured case (FR-34): device identity, canonical symptom, procedure followed, fix step, outcome, confidence, tenant/household scope.
-- **Symptom-canonicalisation step** — LLM structured output (`claude-sonnet-5`) mapping a raw utterance to `{ category, symptom class, observable signals }` (FR-35).
+- **Symptom-canonicalisation step** — LLM structured output (Gemini) mapping a raw utterance to `{ category, symptom class, observable signals }` (FR-35).
 - **Confidence-scoring / decay job** — a background job that moves confidence over time on the no-recurrence, repeated-failure, and recurrence signals (FR-39, FR-44).
 - **Administration surface** — household review/correct/delete of cases (FR-43).
 - **Scrub-before-promotion pipeline** — strips identifying content prior to any cross-household use (FR-41), gated by opt-in (FR-40).
@@ -63,7 +63,7 @@ The most consequential decisions in the roadmap live here — six points, each a
 ## External dependencies
 - **Vector store** — for case-base and document-index embeddings; must support metadata filtering by household/tenant for scoping and isolation.
 - **Relational store** — for structured case records and confidence fields.
-- **Claude `claude-sonnet-5`** — symptom canonicalisation via structured output (FR-35). *Gotcha:* canonicalisation quality directly determines hit rate (R-11); treat its schema as a first-class artifact.
+- **Gemini (`@google/genai`)** — symptom canonicalisation via structured output (FR-35). *Gotcha:* canonicalisation quality directly determines hit rate (R-11); treat its schema as a first-class artifact.
 - **Embedding model** — for both collections. *Gotcha:* keep case-base and document-index embedding spaces conceptually distinct even if the same model is used.
 - **Background job runner** — for the confidence-scoring / decay job and the delayed 30-day no-recurrence upgrade.
 

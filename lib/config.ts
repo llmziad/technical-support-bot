@@ -2,8 +2,8 @@
 // Per code-conventions.md: model ids and base URLs live here, not sprinkled in code.
 
 // Procedure construction inside /api/resolve-procedure. Locked project decision.
-// Gemini 2.5 Flash — latency-sensitive structured extraction. Swap to
-// "gemini-2.5-pro" for higher quality at the cost of latency.
+// Gemini 3.6 Flash — latency-sensitive structured extraction. Swap to
+// "gemini-3.6-pro" for higher quality at the cost of latency.
 export const EXTRACTOR_MODEL = "gemini-3.6-flash";
 
 // context.dev — URL -> clean markdown, /web/search, PDF-at-URL auto-parse.
