@@ -7,7 +7,7 @@ Manuel is a voice-first web app that walks a non-technical person through fixing
 | Doc | What it covers |
 |---|---|
 | [`../CLAUDE.md`](../CLAUDE.md) | Project entry point: what Manuel is, build shape, commands, env, guardrails |
-| [`../technical-spec.md`](../technical-spec.md) | The technical spec: problem, architecture (with diagrams), tool rationale, six-hour feasibility, v2 roadmap |
+| [`../TECH-SPEC.md`](../TECH-SPEC.md) | The technical spec: problem, architecture, tool rationale, six-hour feasibility, v2 roadmap |
 | [`architecture.md`](architecture.md) | System design, data flow, external APIs and their gotchas, the three-store model |
 | [`code-conventions.md`](code-conventions.md) | TypeScript/Next.js conventions and the working principles |
 | [`ui-design.md`](ui-design.md) | The design system: clean/minimal, purposeful color, components, states, accessibility |
