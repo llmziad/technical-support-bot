@@ -7,8 +7,10 @@
 //   Tools registered:
 //     - resolve_procedure   (webhook -> POST {APP_URL}/api/resolve-procedure)
 //     - search_documentation(webhook -> POST {APP_URL}/api/search)
-//     - showStep            (client)
-//     - escalate            (client — the tel: dialer gag)
+//     - showStep            (client — sets activity "guiding")
+//     - escalate            (client — the tel: dialer gag; sets activity "escalating")
+//     - identifyDevice      (client — camera/vision; sets activity "photo")
+//     - setActivity         (client — the on-screen "what Manuel is doing now" banner)
 //
 // Usage:
 //   set -a; . ./.env.local; set +a            # load ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID
@@ -126,6 +128,32 @@ const TOOLS = [
       outcomes: { type: "string", description: "outcome of each attempted step" },
     },
   ),
+  // Vision: expects_response=true — the tool opens the camera and RETURNS a
+  // spoken-ready summary the agent must act on (confirm device / describe what's
+  // visible / fall back to voice on low confidence).
+  client(
+    "identifyDevice",
+    "Open the camera so the user can photograph the device, or the label with its model number. Identifies the brand and model and reports what is visibly wrong (which lights are on, what's plugged in, any error code on the screen). Call this when the user can't read or say the model, or is struggling to describe the problem. Returns text for you to act on: the device to confirm aloud (or a request to ask by voice), plus the visible observations.",
+    [],
+    {},
+    true,
+  ),
+  // Activity banner: fire-and-forget (expects_response=false) — never make the agent
+  // wait on the UI. Keeps the on-screen "what Manuel is doing now" indicator current
+  // through the states the browser can't observe (server work inside resolve_procedure).
+  client(
+    "setActivity",
+    "Update the on-screen banner showing what you're doing now. Call setActivity with state 'fetching' just before resolve_procedure, and 'reviewing' the moment it returns (before the first step). You do not need to call this for photos, guiding steps, or escalation — those tools set the banner themselves.",
+    ["state"],
+    {
+      state: {
+        type: "string",
+        enum: ["idle", "fetching", "reviewing", "photo", "guiding", "escalating"],
+        description: "what Manuel is doing right now",
+      },
+      label: { type: "string", description: "optional custom wording; omit to use the default for the state" },
+    },
+  ),
 ];
 
 // ---- Manuel prompt + first message (verbatim from docs/agent-config.md) --------
@@ -144,6 +172,19 @@ DEVICE IDENTIFICATION (FR-4/5)
   Never ask "what is the model number" as if they should already know it.
 - If they can't find the model, that's fine — proceed with brand + category.
 - Get the symptom in the user's own words ("What's it doing, or not doing?").
+
+CAMERA — DEVICE IDENTIFICATION & VISUAL CHECK (FR-8, FR-9)
+- If the user can't read or say the model, OR is struggling to describe the problem, offer the
+  camera: "If it's easier, I can take a look — point your camera at the device, or at the label with
+  the model number." Then call identifyDevice (no arguments). It opens a photo prompt and returns
+  what it found.
+- The result names the device (brand/model) and describes what is VISIBLE (lights, cables, error
+  codes, anything wrong). If it says it couldn't identify confidently, do NOT guess — ask for the
+  brand and model out loud (FR-9).
+- Always CONFIRM the identified device aloud before fixing ("This looks like a Netgear R7000 — is
+  that right?"). Speak back what you can see ("I can also see the internet light is off"), and fold
+  those visible problems into the symptom you pass to resolve_procedure. Only the manual gives steps —
+  a visible observation is a clue, never a step.
 
 CONFIRM ALOUD BEFORE FIXING (FR-7)
 - Once you have brand + category (+ model if available) and the symptom, say back what you
@@ -167,6 +208,11 @@ STEP DELIVERY — NON-NEGOTIABLE
 WHILE THE TOOL IS RUNNING (NFR-2)
 - resolve_procedure can take several seconds. The instant you decide to call it, first say a short
   holding line out loud, THEN make the call. Never sit silent.
+- The on-screen activity banner needs to know what you're doing during that silent server work
+  (the browser can't see it): call setActivity({ state: "fetching" }) right before resolve_procedure,
+  and setActivity({ state: "reviewing" }) the moment it returns, before you speak the first step.
+  You do NOT need setActivity for the photo, guiding, or escalation states — those tools set the
+  banner themselves.
 
 USING THE TOOL RESULT
 - status "resolved": speak the one-line summary, confirm the device aloud, then begin step 1.
